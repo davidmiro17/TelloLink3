@@ -1,38 +1,78 @@
-import threading, time
+import threading
+import time
 
-def _telemetry_loop(self, period_s: float):   #Función que actualiza altura, batería, temp, calidad wifi y tiempo de vuelo.
+# Intentamos importar la PoseVirtual (opcional: si no existe no se rompe)
+try:
+    from TelloLink.modules.tello_pose import PoseVirtual
+except Exception:
+    PoseVirtual = None
 
+
+def _telemetry_loop(self, period_s: float):
+    """Función periódica: lee telemetría y sincroniza la pose (z/yaw) si está disponible."""
     while not getattr(self, "_telemetry_stop", True):
 
-        if getattr(self, "_tello", None) is None or self.state == "disconnected":    # Si Tello desconectado, no intenta leer telemetría, espera un periodo y vuelve a probar
+        # Si no hay conexión, esperamos y reintentamos
+        if getattr(self, "_tello", None) is None or getattr(self, "state", "disconnected") == "disconnected":
             time.sleep(period_s)
             continue
 
-        # Altura (cm)
+        # Valores locales para sincronización de pose
+        height_val = None
+        yaw_val = None
+
+        # -------- Altura (cm) --------
         try:
             h = self._tello.get_height()
             if h is not None:
-                self.height_cm = max(0, int(h))   #Si la altura existe, la guarda como entero no negativo
-        except Exception:    #Si no, se ignora para que el programa no falle
+                self.height_cm = max(0, int(h))
+                height_val = self.height_cm
+        except Exception:
             pass
 
-        # Batería (%)
+        # -------- Yaw (grados) --------
+        try:
+            # Primero intentamos get_yaw() si la librería lo expone
+            gy = getattr(self._tello, "get_yaw", None)
+            if callable(gy):
+                y = gy()
+            else:
+                # Alternativa: leer del estado crudo si existe
+                y = None
+                gc = getattr(self._tello, "get_current_state", None)
+                if callable(gc):
+                    try:
+                        st = gc()
+                        # djitellopy suele exponer 'yaw' en grados
+                        if isinstance(st, dict):
+                            y = st.get("yaw", None)
+                    except Exception:
+                        y = None
+
+            if y is not None:
+                # Algunos firmwares devuelven strings; convertimos con seguridad
+                self.yaw_deg = float(y)
+                yaw_val = self.yaw_deg
+        except Exception:
+            pass
+
+        # -------- Batería (%) --------
         try:
             b = self._tello.get_battery()
             if b is not None:
-                self.battery_pct = max(0, int(b))   #Hacemos lo mismo
+                self.battery_pct = max(0, int(b))
         except Exception:
             pass
 
-        # Temperatura (°C)
+        # -------- Temperatura (°C) --------
         try:
             t = self._tello.get_temperature()
             if t is not None:
-                self.temp_c = float(t)   #Se guarda la temperatura
+                self.temp_c = float(t)
         except Exception:
             pass
 
-        # WiFi (calidad 0..100 aprox)
+        # -------- WiFi (0..100 aprox) --------
         try:
             w = self._tello.get_wifi()
             if w is not None:
@@ -40,7 +80,7 @@ def _telemetry_loop(self, period_s: float):   #Función que actualiza altura, ba
         except Exception:
             pass
 
-        # Tiempo de vuelo (s) (en segundos desde el despegue)
+        # -------- Tiempo de vuelo (s) --------
         try:
             ft = self._tello.get_flight_time()
             if ft is not None:
@@ -48,19 +88,41 @@ def _telemetry_loop(self, period_s: float):   #Función que actualiza altura, ba
         except Exception:
             pass
 
-        #Aqui se guarda la hora de la ultima lectura de la telemetría (para saber si se ha quedado "colgada" la telemetría)
+        # -------- Sincronización de PoseVirtual (z/yaw) --------
+        try:
+            # Si aún no existe pose, la creamos (opcional: quita esto si prefieres instanciarla fuera)
+            if not hasattr(self, "pose") or self.pose is None:
+                if PoseVirtual is not None:
+                    self.pose = PoseVirtual()
+
+            if hasattr(self, "pose") and self.pose is not None:
+                # Solo pasamos valores válidos (None se ignora dentro del método)
+                self.pose.set_from_telemetry(
+                    height_cm=height_val,
+                    yaw_deg=yaw_val
+                )
+        except Exception:
+            # Nunca dejes caer el hilo de telemetría por fallos de pose
+            pass
+
+        # Timestamp de última lectura (útil para watchdogs)
         self.telemetry_ts = time.time()
 
         time.sleep(period_s)
 
-def startTelemetry(self, freq_hz: int = 5):   #Función para empezar la recogida periódica de la telemetría, con un periódo de 5 lecturas por segundo
 
-    if freq_hz <= 0: freq_hz = 5
-    if getattr(self, "_telemetry_thread", None) and self._telemetry_thread.is_alive(): #Si ya hay un hilo de telemetría activo, no se arranca otro
+def startTelemetry(self, freq_hz: int = 5):
+    """
+    Arranca la telemetría periódica (por defecto 5 Hz).
+    Devuelve False si ya hay un hilo activo.
+    """
+    if freq_hz <= 0:
+        freq_hz = 5
+
+    if getattr(self, "_telemetry_thread", None) and self._telemetry_thread.is_alive():
         return False
 
-    # Inicializa los atributos por defecto (por si no existen aún)
-
+    # Inicialización de atributos (si no existen)
     self.height_cm = getattr(self, "height_cm", 0)
     self.battery_pct = getattr(self, "battery_pct", None)
     self.temp_c = getattr(self, "temp_c", None)
@@ -68,16 +130,22 @@ def startTelemetry(self, freq_hz: int = 5):   #Función para empezar la recogida
     self.flight_time_s = getattr(self, "flight_time_s", 0)
     self.telemetry_ts = time.time()
 
-    self._telemetry_stop = False
-    period_s = 1.0 / float(freq_hz) #Se calcula el periodo a partir de la frecuencia
+    # Si quieres garantizar pose desde el inicio, la creamos aquí también
+    if not hasattr(self, "pose") or self.pose is None:
+        if PoseVirtual is not None:
+            self.pose = PoseVirtual()
 
-    th = threading.Thread(target=_telemetry_loop, args=(self, period_s), daemon=True) #Creamos el hilo que ejecutará _telemetry_loop
+    self._telemetry_stop = False
+    period_s = 1.0 / float(freq_hz)
+
+    th = threading.Thread(target=_telemetry_loop, args=(self, period_s), daemon=True)
     self._telemetry_thread = th
     th.start()
     return True
 
-def stopTelemetry(self):   #Función que detiene el hilo de telemetría si está activo.
 
+def stopTelemetry(self):
+    """Detiene la telemetría si está activa."""
     self._telemetry_stop = True
     th = getattr(self, "_telemetry_thread", None)
     if th and th.is_alive():
