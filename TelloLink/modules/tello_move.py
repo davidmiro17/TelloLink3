@@ -133,36 +133,15 @@ def set_speed(self, speed_cm_s: int): #En vez de trabajar siempre con la velocid
 
 
 def rc(self, vx: int, vy: int, vz: int, yaw: int):
-    """
-    Control RC continuo para joystick (velocidades -100 a +100).
-
-    Args:
-        vx: adelante(+)/atrás(-) en cm/s
-        vy: derecha(+)/izquierda(-) en cm/s
-        vz: arriba(+)/abajo(-) en cm/s
-        yaw: horario(+)/antihorario(-) en grados/s
-
-    Returns:
-        bool: True si el comando se envió correctamente
-
-    Ejemplo:
-        # Mover adelante a 50% velocidad, sin otras componentes
-        dron.rc(50, 0, 0, 0)
-
-        # Detener completamente
-        dron.rc(0, 0, 0, 0)
-    """
     # Limitar valores al rango válido del SDK Tello
     vx = max(-100, min(100, int(vx)))
     vy = max(-100, min(100, int(vy)))
     vz = max(-100, min(100, int(vz)))
     yaw = max(-100, min(100, int(yaw)))
 
-    # Construir comando RC del SDK Tello
-    cmd = f"rc {vx} {vy} {vz} {yaw}"
-
     try:
-        self._send(cmd)
+
+        self._tello.send_rc_control(vx, vy, vz, yaw)
         return True
     except Exception as e:
         print(f"[rc] Error enviando comando: {e}")

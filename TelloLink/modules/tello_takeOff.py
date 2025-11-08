@@ -20,11 +20,11 @@ def _read_height_cm_runtime(self) -> int:
 
 
 def _checkAltitudeReached(self, target_h_cm, timeout_s=5.0):
-    """Comprueba si el dron ha alcanzado al menos la altura objetivo."""
+
     t0 = time.time()
     while time.time() - t0 < timeout_s:
         h = _read_height_cm_runtime(self)
-        if h >= target_h_cm * 0.9:  # margen del 10%
+        if h >= target_h_cm * 0.9:  # margen del 10% (tolerancia)
             return True
         time.sleep(0.2)
     return False
@@ -39,12 +39,7 @@ def _ascend_to_target(self, target_h_cm):
 
 
 def _takeOff(self, altura_objetivo_m=0.5, blocking=True):
-    """
-    Despegue controlado con comprobación de altura, empujón de rescate
-    y dos mejoras:
-      - cooldown final para que el PRIMER movimiento no falle,
-      - reset de pose para que los ejes sean relativos a ESTE despegue.
-    """
+
     try:
         if getattr(self, "state", "") == "disconnected":
             print("[ERROR] Dron desconectado, abortando despegue.")
@@ -122,11 +117,26 @@ def _takeOff(self, altura_objetivo_m=0.5, blocking=True):
 
 def takeOff(self, altura_objetivo_m=0.5, blocking=True):
     """Wrapper público para el hilo de despegue."""
+
+    # ✅ AÑADIR AL INICIO:
+    if getattr(self, "_takeoff_in_progress", False):
+        print("[takeOff] Ya hay un despegue en curso; ignoro la petición duplicada.")
+        return True
+
+    setattr(self, "_takeoff_in_progress", True)
+
     if blocking:
-        return _takeOff(self, altura_objetivo_m, blocking=False)
+        try:
+            return _takeOff(self, altura_objetivo_m, blocking=False)
+        finally:
+            setattr(self, "_takeoff_in_progress", False)
     else:
         import threading
-        threading.Thread(
-            target=_takeOff, args=(self, altura_objetivo_m, False), daemon=True
-        ).start()
+        def _runner():
+            try:
+                _takeOff(self, altura_objetivo_m, False)
+            finally:
+                setattr(self, "_takeoff_in_progress", False)
+
+        threading.Thread(target=_runner, daemon=True).start()
         return True

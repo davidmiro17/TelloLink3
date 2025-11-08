@@ -1,2 +1,3 @@
 from .Tello import TelloDron
-__all__ = ["TelloDron"]
+from .modules.tello_joystick import JoystickController
+__all__ = ["TelloDron", "JoystickController"]

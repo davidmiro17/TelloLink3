@@ -31,10 +31,7 @@ def _read_height_cm_runtime(self) -> float:
 
 # --- API público: Land ---
 def Land(self, blocking=True, callback=None, params=None):
-    """
-    Aterriza el dron. Si blocking=True, espera a terminar.
-    Devuelve True si se inicia (o ya estaba) el aterrizaje.
-    """
+
     # 0) Antirreentradas: evita lanzar 2 lands a la vez
     if getattr(self, "_landing_in_progress", False):
         print("[land] Ya hay un aterrizaje en curso; ignoro la petición duplicada.")
@@ -78,14 +75,7 @@ def Land(self, blocking=True, callback=None, params=None):
 
 # --- Implementación real del aterrizaje ---
 def _land(self, callback=None, params=None):
-    """
-    Aterrizaje robusto:
-      Paso 1) Marca estado 'landing'
-      Paso 2) Si ya está en el suelo (≤20 cm), no manda 'land' y normaliza.
-      Paso 3) Envía 'land' (acepta respuesta no 'ok' sin abortar)
-      Paso 4) Espera descenso real por altura (timeout)
-      Paso 5) Normaliza estado y callback
-    """
+
     try:
         # Paso 1) Estado intermedio
         try:
