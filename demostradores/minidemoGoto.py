@@ -407,10 +407,11 @@ class MiniGotoApp:
             self._pause_keepalive()
             try:
                 getattr(self.dron, verb)(dist)
-                # actualización de pose si existe
+                # actualización de pose si existe (SOLO si mission pads NO están activos)
                 try:
-                    if hasattr(self.dron, "pose"):
-                        self.dron.pose.update_move(verb, dist)
+                    if not getattr(self.dron, "_mission_pads_enabled", False):
+                        if hasattr(self.dron, "pose"):
+                            self.dron.pose.update_move(verb, dist)
                 except Exception:
                     pass
             finally:

@@ -50,8 +50,10 @@ def _send_and_update(self, cmd: str, dist_cm: float) -> bool:
         ok = bool(str(resp).lower() == "ok" or resp is True) #Comprueba si el dron confirmó el movimiento
         if ok: #Si se ejecutó correctamente
             try:
-                if hasattr(self, "pose") and self.pose: #Comprueba que haya el atributo pose exista
-                    self.pose.update_move(cmd, dist_i) #Si existe, actualiza las coordenadas
+                # POSE: actualizar SOLO si mission pads NO están activos (dead reckoning)
+                if not getattr(self, "_mission_pads_enabled", False):
+                    if hasattr(self, "pose") and self.pose: #Comprueba que haya el atributo pose exista
+                        self.pose.update_move(cmd, dist_i) #Si existe, actualiza las coordenadas
             except Exception:
                 pass
             return True
