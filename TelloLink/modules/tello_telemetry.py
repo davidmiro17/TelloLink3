@@ -91,7 +91,27 @@ def _telemetry_loop(self, period_s: float):
         except Exception:
             pass
 
-        #  Sincronización de PoseVirtual (z/yaw)
+        #  NUEVO: Mission Pads - Lectura automática de posición real
+        mission_pad_updated = False
+        try:
+            if getattr(self, "_mission_pads_enabled", False):
+                # Intentar leer coordenadas del mission pad
+                try:
+                    mid_x = self._tello.get_mission_pad_distance_x()
+                    mid_y = self._tello.get_mission_pad_distance_y()
+                    mid_z = self._tello.get_mission_pad_distance_z()
+
+                    # Si todas las coordenadas son válidas (>= 0), actualizar pose
+                    if mid_x >= 0 and mid_y >= 0 and mid_z >= 0:
+                        if hasattr(self, "pose") and self.pose is not None:
+                            self.pose.set_from_mission_pad(mid_x, mid_y, mid_z)
+                            mission_pad_updated = True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        #  Sincronización de PoseVirtual (z/yaw) - Solo si NO se actualizó con mission pad
         try:
             # Si aún no existe pose, la creamos
             if not hasattr(self, "pose") or self.pose is None:
@@ -99,8 +119,9 @@ def _telemetry_loop(self, period_s: float):
                     self.pose = PoseVirtual()
 
             if hasattr(self, "pose") and self.pose is not None:
-                # Altura (z)
-                self.pose.set_from_telemetry(height_cm=height_val)
+                # Altura (z) - Solo actualizar si no vino de mission pad
+                if not mission_pad_updated:
+                    self.pose.set_from_telemetry(height_cm=height_val)
 
                 # Yaw absoluto -> relativo
                 if yaw_val is not None:

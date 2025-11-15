@@ -113,8 +113,11 @@ class PoseVirtual:
         rel = (abs_norm - zero) % 360.0
         self.yaw_deg = rel
 
-
-
+    def set_from_mission_pad(self, x_cm: float, y_cm: float, z_cm: float):
+        """Actualiza la pose con coordenadas REALES desde mission pad."""
+        self.x_cm = float(x_cm)
+        self.y_cm = float(y_cm)
+        self.z_cm = float(z_cm)
 
     def __repr__(self) -> str:
         return (f"PoseVirtual(x={self.x_cm:.1f}, y={self.y_cm:.1f}, "
