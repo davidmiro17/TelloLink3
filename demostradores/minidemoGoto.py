@@ -34,12 +34,12 @@ class MiniGotoApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Demo Tello GOTO")
-        self.root.geometry("560x520")
+        self.root.geometry("560x580")  # Aumentado para el panel de mission pads
         self.root.resizable(True, True)
 
         self.dron = TelloDron()
 
-        # Variables interfaz gráfica (heredamos idea del “mando”)
+        # Variables interfaz gráfica (heredamos idea del "mando")
         self.step_var  = tk.IntVar(value=DEFAULT_STEP)
         self.speed_var = tk.IntVar(value=DEFAULT_SPEED)
         self.angle_var = tk.IntVar(value=DEFAULT_ANGLE)
@@ -48,6 +48,9 @@ class MiniGotoApp:
         self.bat_var   = tk.StringVar(value="—")
         self.h_var     = tk.StringVar(value="0 cm")
         self.wifi_var  = tk.StringVar(value="—")
+
+        # NUEVO: Mission Pads status
+        self.pad_var   = tk.StringVar(value="Mission Pad: —")
 
         # Campos GOTO (deltas relativos)
         self.dx_var   = tk.StringVar(value="0")   # ΔX cm (forward +)
@@ -88,6 +91,11 @@ class MiniGotoApp:
 
         tk.Label(top, text="WiFi:").grid(row=0, column=6, sticky="e")
         tk.Label(top, textvariable=self.wifi_var, width=6).grid(row=0, column=7, sticky="w")
+
+        # NUEVO: Panel Mission Pads
+        pad_panel = tk.Frame(self.root, bd=1, relief="groove")
+        pad_panel.pack(fill="x", **pad)
+        tk.Label(pad_panel, textvariable=self.pad_var, anchor="w", fg="#0066cc", font=("Arial", 9, "bold")).pack(side="left", padx=10)
 
         # Conexión
         conn = tk.Frame(self.root, bd=1, relief="groove")
@@ -144,7 +152,8 @@ class MiniGotoApp:
             self.root,
             fg="#555",
             text=("Consejos: define deltas moderados y prueba en un espacio amplio.\n"
-                  "Abortar detiene la secuencia en el siguiente subpaso.")
+                  "Abortar detiene la secuencia en el siguiente subpaso.\n"
+                  "Mission Pads: Se activa automáticamente tras despegar (requiere Tello EDU + pad visible).")
         )
         note.pack(pady=4)
 
@@ -186,6 +195,7 @@ class MiniGotoApp:
             self.bat_var.set("—")
             self.h_var.set("0 cm")
             self.wifi_var.set("—")
+            self.pad_var.set("Mission Pad: —")
             self.objetivo_var.set("—")
             self.progreso_var.set("—")
             self.aviso_var.set("—")
@@ -203,6 +213,37 @@ class MiniGotoApp:
             ok = self.dron.takeOff(0.5, blocking=True)
             if not ok:
                 messagebox.showerror("TakeOff", "No se pudo despegar.")
+                return
+
+            # NUEVO: Activar Mission Pads automáticamente tras despegar
+            try:
+                self.dron.enable_mission_pads()
+                time.sleep(1.5)  # Dar tiempo a la cámara para detectar
+
+                if self.dron.is_mission_pad_detected():
+                    pos = self.dron.get_mission_pad_position()
+                    self.pad_var.set(f"Mission Pad: ✓ Pad {pos['id']} - Tracking REAL (x={pos['x']}, y={pos['y']}, z={pos['z']})")
+                    messagebox.showinfo(
+                        "Mission Pads",
+                        f"Mission Pad detectado!\n\n"
+                        f"ID: {pos['id']}\n"
+                        f"Posición REAL: x={pos['x']} cm, y={pos['y']} cm, z={pos['z']} cm\n\n"
+                        f"Ahora GOTO usará coordenadas reales en lugar de dead reckoning."
+                    )
+                else:
+                    self.pad_var.set("Mission Pad: ⚠ No detectado - Usando dead reckoning")
+                    messagebox.showwarning(
+                        "Mission Pads",
+                        "No se detectó mission pad.\n\n"
+                        "Posible causa:\n"
+                        "- No tienes un Tello EDU (solo EDU soporta mission pads)\n"
+                        "- El mission pad no está visible para la cámara\n"
+                        "- Mala iluminación\n\n"
+                        "Se usará dead reckoning (estimación) en su lugar."
+                    )
+            except Exception as e:
+                self.pad_var.set(f"Mission Pad: ✗ Error - {e}")
+
         except Exception as e:
             messagebox.showerror("TakeOff", str(e))
         finally:

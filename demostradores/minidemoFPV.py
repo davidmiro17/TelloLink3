@@ -63,7 +63,7 @@ class MiniRemoteApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Demo Tello Geofence + FPV + Joystick")
-        self.root.geometry("740x650")
+        self.root.geometry("740x690")  # Aumentado para panel mission pads
         self.root.resizable(True, True)
         self.root.configure(bg="#f0f0f0")
 
@@ -86,6 +86,9 @@ class MiniRemoteApp:
         self.y_var = tk.StringVar(value="Y: —")
         self.z_var = tk.StringVar(value="Z: —")
         self.yaw_var = tk.StringVar(value="Yaw: —")
+
+        # NUEVO: Mission Pads
+        self.pad_var = tk.StringVar(value="Mission Pad: —")
 
         # Geofence
         self.gf_max_x_var = tk.StringVar(value="0")
@@ -228,6 +231,11 @@ class MiniRemoteApp:
         tk.Label(top, text="WiFi:").grid(row=0, column=6, sticky="e")
         tk.Label(top, textvariable=self.wifi_var, width=6).grid(row=0, column=7, sticky="w")
 
+        # NUEVO: Panel Mission Pads
+        pad_panel = tk.Frame(self.root, bd=1, relief="groove")
+        pad_panel.pack(fill="x", **pad)
+        tk.Label(pad_panel, textvariable=self.pad_var, anchor="w", fg="#0066cc", font=("Arial", 9, "bold")).pack(side="left", padx=10)
+
         # Conexión
         conn = tk.Frame(self.root, bd=1, relief="groove")
         conn.pack(fill="x", **pad)
@@ -324,7 +332,8 @@ class MiniRemoteApp:
 
         # Nota compacta
         note = tk.Label(self.root, fg="#555", font=("Arial", 8),
-                        text="Joystick: IZQ=movimiento XY | DER=altura+rotación | Teclado: flechas/PgUp/PgDn/Q/E")
+                        text="Joystick: IZQ=movimiento XY | DER=altura+rotación | Teclado: flechas/PgUp/PgDn/Q/E\n"
+                             "Mission Pads: Se activa automáticamente tras despegar (requiere Tello EDU + pad visible)")
         note.pack(pady=2)
 
         # POSE panel compacto
@@ -550,6 +559,7 @@ class MiniRemoteApp:
             self.y_var.set("Y: —")
             self.z_var.set("Z: —")
             self.yaw_var.set("Yaw: —")
+            self.pad_var.set("Mission Pad: —")
             try:
                 if self._map_win and tk.Toplevel.winfo_exists(self._map_win):
                     self._map_win.destroy()
@@ -579,6 +589,22 @@ class MiniRemoteApp:
                 except Exception:
                     pass
                 self._hud_show("✈️ Despegado", 1.5)
+
+                # NUEVO: Activar Mission Pads automáticamente tras despegar
+                try:
+                    self.dron.enable_mission_pads()
+                    time.sleep(1.5)  # Dar tiempo a la cámara para detectar
+
+                    if self.dron.is_mission_pad_detected():
+                        pos = self.dron.get_mission_pad_position()
+                        self.pad_var.set(f"Mission Pad: ✓ Pad {pos['id']} - REAL tracking (x={pos['x']}, y={pos['y']}, z={pos['z']})")
+                        self._hud_show(f"✓ Mission Pad {pos['id']} detectado", 2.5)
+                    else:
+                        self.pad_var.set("Mission Pad: ⚠ No detectado - Dead reckoning")
+                        self._hud_show("⚠ No mission pad - Dead reckoning", 2.0)
+                except Exception as e:
+                    self.pad_var.set(f"Mission Pad: ✗ Error - {e}")
+
         except Exception as e:
             messagebox.showerror("TakeOff", str(e))
         finally:
